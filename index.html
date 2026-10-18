@@ -419,6 +419,23 @@
       gap: 8px;
     }
     .send-buttons > * { flex: 1; text-align: center; }
+    [hidden] { display: none !important; }
+    .input-group { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .input-group .field-input { width: 100%; min-width: 0; }
+    .berth-grid { grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr)); }
+    .note-card { margin-top: 14px; margin-bottom: 0; }
+    .note-input {
+      width: 100%;
+      min-height: 90px;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 15px;
+      resize: vertical;
+    }
     .mail-input { font-family: inherit; font-size: 15px; }
     .import-note { margin-top: 6px; font-weight: 600; white-space: pre-wrap; }
     .send-preview {
@@ -472,7 +489,7 @@
 
   <main>
     <div class="import-banner" id="importBanner" hidden></div>
-    <div class="add-card">
+    <div class="add-card" id="addCard">
       <div class="field-label">Añadir amarre a revisar</div>
       <form class="add-row" id="addForm" autocomplete="off">
         <input class="field-input" id="berthInput" type="text" placeholder="Ej. F07, H29 B, K56" autocapitalize="characters" enterkeyhint="done">
@@ -484,7 +501,12 @@
 
     <div class="list-head" id="listHead" hidden>Amarres a revisar <span id="berthCount"></span></div>
     <div class="berth-grid" id="berthList"></div>
-    <div class="empty-state" id="emptyState">Todavía no hay amarres. Escribe el código del amarre que pide recepción y pulsa Añadir.</div>
+    <div class="empty-state" id="emptyState">Todavía no hay amarres. Abre el enlace que te manda recepción.</div>
+
+    <div class="add-card note-card" id="noteCard" hidden>
+      <label class="field-label" for="receptionNote">Nota para la recepción</label>
+      <textarea class="note-input" id="receptionNote" placeholder="Ej. El contador del F07 está roto, no se puede leer"></textarea>
+    </div>
 
     <div class="send-panel" id="sendPanel" hidden>
       <label class="field-label" for="sendNote">Nota para el marinero (opcional)</label>
@@ -592,10 +614,10 @@
         const raw = localStorage.getItem(key(d));
         if (raw) {
           const s = JSON.parse(raw);
-          return { berths: (s.berths || []).filter(b => ORDER.has(b)), readings: s.readings || {} };
+          return { berths: (s.berths || []).filter(b => ORDER.has(b)), readings: s.readings || {}, note: s.note || '' };
         }
       } catch (e) {}
-      return { berths: [], readings: {} };
+      return { berths: [], readings: {}, note: '' };
     }
     // Borra listas de más de 7 días
     function cleanup() {
@@ -695,6 +717,8 @@
       document.getElementById('listHead').hidden = n === 0;
       document.getElementById('berthCount').textContent = `${n} ${n === 1 ? 'amarre' : 'amarres'}`;
       document.getElementById('sendPanel').hidden = true;
+      document.getElementById('noteCard').hidden = RECEPCION || n === 0;
+      document.getElementById('receptionNote').value = state.note || '';
 
       state.berths.forEach(berth => {
         const r = state.readings[berth] || (state.readings[berth] = { light: '', water: '', occupied: false });
@@ -807,6 +831,19 @@
         },
         margin: { left: 14, right: 14 }
       });
+
+      const note = (state.note || '').trim();
+      if (note) {
+        let ny = doc.lastAutoTable.finalY + 10;
+        const lines = doc.splitTextToSize(note, W - 28);
+        if (ny + 8 + lines.length * 5 > 280) { doc.addPage(); ny = 20; }
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.text('Nota para la recepción:', 14, ny);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(11);
+        doc.text(lines, 14, ny + 7);
+      }
 
       const pages = doc.getNumberOfPages();
       doc.setFontSize(9);
@@ -994,10 +1031,16 @@
       document.getElementById('pdfBtn').hidden = RECEPCION;
       document.getElementById('saveBtn').hidden = RECEPCION;
       document.getElementById('sendBtn').hidden = !RECEPCION;
+      document.getElementById('addCard').hidden = !RECEPCION;
       document.getElementById('emptyState').textContent = RECEPCION
         ? 'Escribe los amarres que hay que revisar y pulsa Enviar lista.'
-        : 'Todavía no hay amarres. Escribe el código del amarre que pide recepción y pulsa Añadir.';
+        : 'Todavía no hay amarres. Abre el enlace que te manda recepción.';
     }
+
+    document.getElementById('receptionNote').addEventListener('input', e => {
+      state.note = e.target.value;
+      autosave();
+    });
 
     function boot() {
       RECEPCION = location.hash === '#recepcion';
