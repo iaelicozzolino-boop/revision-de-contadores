@@ -419,6 +419,8 @@
       gap: 8px;
     }
     .send-buttons > * { flex: 1; text-align: center; }
+    .mail-input { font-family: inherit; font-size: 15px; }
+    .import-note { margin-top: 6px; font-weight: 600; white-space: pre-wrap; }
     .send-preview {
       white-space: pre-wrap;
       word-break: break-all;
@@ -489,6 +491,12 @@
       <textarea id="sendNote" placeholder="Ej. Revisar antes de las 12, el F07 marca raro"></textarea>
       <div class="field-label">Mensaje que se enviará</div>
       <div class="send-preview" id="sendPreview"></div>
+      <label class="field-label" for="mailTo">Email del marinero</label>
+      <input class="field-input mail-input" id="mailTo" type="email" inputmode="email" autocomplete="email" placeholder="marinero@ejemplo.com">
+      <div class="send-buttons">
+        <button class="btn-primary" id="mailBtn" type="button">Enviar por email</button>
+        <button class="btn-secondary" id="gmailBtn" type="button">Abrir en Gmail</button>
+      </div>
       <div class="send-buttons">
         <button class="btn-link" id="waBtn" type="button">WhatsApp</button>
         <button class="btn-secondary" id="copyBtn" type="button">Copiar mensaje</button>
@@ -861,8 +869,11 @@
     // ---------- Recepción: preparar y enviar la lista ----------
     function listLink() {
       const code = currentDate.replace(/-/g, '') + '-' + state.berths.map(compact).join('-');
-      return ON_WEB ? `${BASE_URL}?lista=${code}` : `${BASE_URL}#r-${code}`;
+      if (!ON_WEB) return `${BASE_URL}#r-${code}`;
+      const note = document.getElementById('sendNote').value.trim();
+      return `${BASE_URL}?lista=${code}` + (note ? `&nota=${encodeURIComponent(note)}` : '');
     }
+    const mailSubject = () => `Revisión de contadores ${formatDate(currentDate)}: ${state.berths.join(', ')}`;
     function buildMessage() {
       const note = document.getElementById('sendNote').value.trim();
       return `Amarres para revisar contadores (${formatDate(currentDate)}):\n` +
@@ -872,6 +883,26 @@
     }
     const updatePreview = () => { document.getElementById('sendPreview').textContent = buildMessage(); };
     document.getElementById('sendNote').addEventListener('input', updatePreview);
+
+    // Email del marinero: se recuerda en este ordenador
+    const mailInput = document.getElementById('mailTo');
+    try { mailInput.value = localStorage.getItem('revision_mailTo') || ''; } catch (e) {}
+    mailInput.addEventListener('input', () => { try { localStorage.setItem('revision_mailTo', mailInput.value.trim()); } catch (e) {} });
+
+    document.getElementById('mailBtn').addEventListener('click', () => {
+      const to = mailInput.value.trim();
+      location.href = `mailto:${encodeURIComponent(to).replace(/%40/g, '@')}` +
+        `?subject=${encodeURIComponent(mailSubject())}&body=${encodeURIComponent(buildMessage())}`;
+      notify('Si no se abre el correo, usa "Abrir en Gmail" o "Copiar mensaje"', 8000);
+    });
+
+    document.getElementById('gmailBtn').addEventListener('click', () => {
+      const url = 'https://mail.google.com/mail/?view=cm&fs=1' +
+        `&to=${encodeURIComponent(mailInput.value.trim())}` +
+        `&su=${encodeURIComponent(mailSubject())}&body=${encodeURIComponent(buildMessage())}`;
+      const w = window.open(url, '_blank');
+      if (!w) location.href = url;
+    });
 
     document.getElementById('waBtn').addEventListener('click', () => {
       const url = 'https://wa.me/?text=' + encodeURIComponent(buildMessage());
@@ -942,6 +973,15 @@
       txt += added ? `${added} ${added === 1 ? 'amarre nuevo añadido' : 'amarres nuevos añadidos'}.` : 'Ya los tenías todos.';
       if (unknown.length) txt += ` Códigos no reconocidos: ${unknown.join(', ')}.`;
       banner.textContent = txt;
+      let nota = null;
+      try { nota = new URLSearchParams(location.search).get('nota'); } catch (e) {}
+      if (nota && nota.trim()) {
+        const n = document.createElement('div');
+        n.className = 'import-note';
+        n.textContent = `Nota de recepción: ${nota.trim()}`;
+        banner.appendChild(n);
+        try { localStorage.setItem(`revision_nota_${date}`, nota.trim()); } catch (e) {}
+      }
       banner.hidden = false;
 
       // Quita el código del enlace para que al recargar no se vuelva a aplicar
