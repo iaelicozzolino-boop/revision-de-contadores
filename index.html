@@ -311,7 +311,6 @@
   </style>
 </head>
 <body>
-
   <style>
     .add-card {
       background: var(--card-bg);
@@ -420,13 +419,24 @@
       gap: 8px;
     }
     .send-buttons > * { flex: 1; text-align: center; }
-    a.btn-link {
+    .send-preview {
+      white-space: pre-wrap;
+      word-break: break-all;
+      font-size: 13px;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--section-header);
+      color: var(--text);
+    }
+    .btn-link {
       display: inline-block;
       padding: 10px 16px;
       border-radius: 6px;
       font-size: 14px;
       font-weight: 600;
       text-decoration: none;
+      border: none;
       background: var(--green);
       color: #fff;
     }
@@ -475,10 +485,12 @@
     <div class="empty-state" id="emptyState">Todavía no hay amarres. Escribe el código del amarre que pide recepción y pulsa Añadir.</div>
 
     <div class="send-panel" id="sendPanel" hidden>
-      <div class="field-label">Mensaje para el marinero</div>
-      <textarea id="sendText" readonly></textarea>
+      <label class="field-label" for="sendNote">Nota para el marinero (opcional)</label>
+      <textarea id="sendNote" placeholder="Ej. Revisar antes de las 12, el F07 marca raro"></textarea>
+      <div class="field-label">Mensaje que se enviará</div>
+      <div class="send-preview" id="sendPreview"></div>
       <div class="send-buttons">
-        <a class="btn-link" id="waLink" href="#" target="_blank" rel="noopener">WhatsApp</a>
+        <button class="btn-link" id="waBtn" type="button">WhatsApp</button>
         <button class="btn-secondary" id="copyBtn" type="button">Copiar mensaje</button>
         <button class="btn-secondary" id="shareBtn" type="button" hidden>Compartir</button>
       </div>
@@ -561,7 +573,9 @@
 
     // Enlace base para los mensajes de recepción
     const ARTIFACT_URL = 'https://claude.ai/artifact/GcM96P2FkxPj9cVRAcViDb';
-    const BASE_URL = /github\.io$/.test(location.hostname) ? location.origin + location.pathname : ARTIFACT_URL;
+    // En GitHub Pages la lista viaja como ?lista=...; dentro de Claude solo funciona #r-...
+    const ON_WEB = /^https?:$/.test(location.protocol) && !/claude/.test(location.hostname);
+    const BASE_URL = ON_WEB ? location.origin + location.pathname : ARTIFACT_URL;
 
     const key = d => `${RECEPCION ? 'recepcion' : 'revision'}_${d}`;
     function store(d, s) { try { localStorage.setItem(key(d), JSON.stringify(s)); return true; } catch (e) { return false; } }
@@ -845,20 +859,29 @@
     document.getElementById('saveBtn').addEventListener('click', saveData);
 
     // ---------- Recepción: preparar y enviar la lista ----------
-    function listToken() {
-      return 'r-' + currentDate.replace(/-/g, '') + '-' + state.berths.map(compact).join('.');
+    function listLink() {
+      const code = currentDate.replace(/-/g, '') + '-' + state.berths.map(compact).join('-');
+      return ON_WEB ? `${BASE_URL}?lista=${code}` : `${BASE_URL}#r-${code}`;
     }
     function buildMessage() {
+      const note = document.getElementById('sendNote').value.trim();
       return `Amarres para revisar contadores (${formatDate(currentDate)}):\n` +
-        `${state.berths.join(', ')}\n\n` +
-        `Abre este enlace y se cargan solos en la app:\n${BASE_URL}#${listToken()}`;
+        `${state.berths.join(', ')}\n` +
+        (note ? `\n${note}\n` : '') +
+        `\nAbre este enlace y se cargan solos en la app:\n${listLink()}`;
     }
+    const updatePreview = () => { document.getElementById('sendPreview').textContent = buildMessage(); };
+    document.getElementById('sendNote').addEventListener('input', updatePreview);
+
+    document.getElementById('waBtn').addEventListener('click', () => {
+      const url = 'https://wa.me/?text=' + encodeURIComponent(buildMessage());
+      const w = window.open(url, '_blank');
+      if (!w) location.href = url;
+    });
 
     document.getElementById('sendBtn').addEventListener('click', () => {
       if (!state.berths.length) { notify('Añade al menos un amarre antes de enviar'); return; }
-      const msg = buildMessage();
-      document.getElementById('sendText').value = msg;
-      document.getElementById('waLink').href = 'https://wa.me/?text=' + encodeURIComponent(msg);
+      updatePreview();
       document.getElementById('shareBtn').hidden = !navigator.share;
       const panel = document.getElementById('sendPanel');
       panel.hidden = false;
@@ -866,24 +889,39 @@
     });
 
     document.getElementById('copyBtn').addEventListener('click', () => {
-      const ta = document.getElementById('sendText');
-      const fallback = () => { ta.focus(); ta.select(); notify('Texto seleccionado: cópialo con el menú del móvil'); };
+      const msg = buildMessage();
+      const fallback = () => {
+        const r = document.createRange(); r.selectNodeContents(document.getElementById('sendPreview'));
+        const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+        notify('Texto seleccionado: cópialo con el menú del móvil');
+      };
       try {
-        navigator.clipboard.writeText(ta.value).then(() => notify('✓ Mensaje copiado'), fallback);
+        navigator.clipboard.writeText(msg).then(() => notify('✓ Mensaje copiado'), fallback);
       } catch (e) { fallback(); }
     });
 
     document.getElementById('shareBtn').addEventListener('click', async () => {
-      try { await navigator.share({ text: document.getElementById('sendText').value }); }
+      try { await navigator.share({ text: buildMessage() }); }
       catch (e) { if (!e || e.name !== 'AbortError') notify('No se pudo abrir el menú de compartir. Usa WhatsApp o Copiar.'); }
     });
 
     // ---------- Marinero: cargar la lista que llega en el enlace ----------
     function importFromHash() {
-      const m = location.hash.match(/^#r-(\d{4})(\d{2})(\d{2})-([A-Za-z0-9.]+)$/);
-      if (!m) return false;
+      // Acepta ?lista=20261018-F07-H29B y el formato antiguo #r-20261018-F07.H29B
+      let raw = null;
+      try { raw = new URLSearchParams(location.search).get('lista'); } catch (e) {}
+      if (!raw) { const h = location.hash.match(/^#r-(.+)$/); if (h) raw = h[1]; }
+      if (!raw) return false;
+      const m = decodeURIComponent(raw).trim().match(/^(\d{4})(\d{2})(\d{2})[-.]([A-Za-z0-9.\- ]+)$/);
+      const banner = document.getElementById('importBanner');
+      if (!m) {
+        banner.textContent = 'El enlace de recepción está incompleto o dañado. Pide que te lo vuelvan a enviar.';
+        banner.hidden = false;
+        try { history.replaceState(null, '', location.pathname); } catch (e) {}
+        return false;
+      }
       const date = `${m[1]}-${m[2]}-${m[3]}`;
-      const codes = m[4].split('.').filter(Boolean);
+      const codes = m[4].split(/[.\- ]+/).filter(Boolean);
       const valid = [], unknown = [];
       codes.forEach(c => { const b = BY_COMPACT.get(c.toUpperCase()); (b ? valid : unknown).push(b || c); });
 
@@ -900,7 +938,6 @@
       state.berths.sort((a, b) => ORDER.get(a) - ORDER.get(b));
       autosave();
 
-      const banner = document.getElementById('importBanner');
       let txt = `Lista de recepción (${formatDate(date)}): ${valid.join(', ') || 'ningún amarre válido'}. `;
       txt += added ? `${added} ${added === 1 ? 'amarre nuevo añadido' : 'amarres nuevos añadidos'}.` : 'Ya los tenías todos.';
       if (unknown.length) txt += ` Códigos no reconocidos: ${unknown.join(', ')}.`;
@@ -908,7 +945,7 @@
       banner.hidden = false;
 
       // Quita el código del enlace para que al recargar no se vuelva a aplicar
-      try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+      try { history.replaceState(null, '', location.pathname); } catch (e) {}
       return true;
     }
 
