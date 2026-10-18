@@ -716,8 +716,9 @@
       document.getElementById('emptyState').hidden = n > 0;
       document.getElementById('listHead').hidden = n === 0;
       document.getElementById('berthCount').textContent = `${n} ${n === 1 ? 'amarre' : 'amarres'}`;
-      document.getElementById('sendPanel').hidden = true;
-      document.getElementById('noteCard').hidden = RECEPCION || n === 0;
+      document.getElementById('sendPanel').hidden = !RECEPCION;
+      document.getElementById('noteCard').hidden = RECEPCION;
+      if (RECEPCION) updatePreview();
       document.getElementById('receptionNote').value = state.note || '';
 
       state.berths.forEach(berth => {
@@ -918,7 +919,17 @@
         (note ? `\n${note}\n` : '') +
         `\nAbre este enlace y se cargan solos en la app:\n${listLink()}`;
     }
-    const updatePreview = () => { document.getElementById('sendPreview').textContent = buildMessage(); };
+    function updatePreview() {
+      document.getElementById('sendPreview').textContent = state.berths.length
+        ? buildMessage()
+        : 'Añade al menos un amarre para preparar el mensaje.';
+    }
+    function needList() {
+      if (state.berths.length) return false;
+      notify('Añade al menos un amarre antes de enviar');
+      document.getElementById('berthInput').focus();
+      return true;
+    }
     document.getElementById('sendNote').addEventListener('input', updatePreview);
 
     // Email del marinero: se recuerda en este ordenador
@@ -927,6 +938,7 @@
     mailInput.addEventListener('input', () => { try { localStorage.setItem('revision_mailTo', mailInput.value.trim()); } catch (e) {} });
 
     document.getElementById('mailBtn').addEventListener('click', () => {
+      if (needList()) return;
       const to = mailInput.value.trim();
       location.href = `mailto:${encodeURIComponent(to).replace(/%40/g, '@')}` +
         `?subject=${encodeURIComponent(mailSubject())}&body=${encodeURIComponent(buildMessage())}`;
@@ -934,6 +946,7 @@
     });
 
     document.getElementById('gmailBtn').addEventListener('click', () => {
+      if (needList()) return;
       const url = 'https://mail.google.com/mail/?view=cm&fs=1' +
         `&to=${encodeURIComponent(mailInput.value.trim())}` +
         `&su=${encodeURIComponent(mailSubject())}&body=${encodeURIComponent(buildMessage())}`;
@@ -942,21 +955,19 @@
     });
 
     document.getElementById('waBtn').addEventListener('click', () => {
+      if (needList()) return;
       const url = 'https://wa.me/?text=' + encodeURIComponent(buildMessage());
       const w = window.open(url, '_blank');
       if (!w) location.href = url;
     });
 
     document.getElementById('sendBtn').addEventListener('click', () => {
-      if (!state.berths.length) { notify('Añade al menos un amarre antes de enviar'); return; }
-      updatePreview();
-      document.getElementById('shareBtn').hidden = !navigator.share;
-      const panel = document.getElementById('sendPanel');
-      panel.hidden = false;
-      panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      if (needList()) return;
+      document.getElementById('sendPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
 
     document.getElementById('copyBtn').addEventListener('click', () => {
+      if (needList()) return;
       const msg = buildMessage();
       const fallback = () => {
         const r = document.createRange(); r.selectNodeContents(document.getElementById('sendPreview'));
@@ -969,6 +980,7 @@
     });
 
     document.getElementById('shareBtn').addEventListener('click', async () => {
+      if (needList()) return;
       try { await navigator.share({ text: buildMessage() }); }
       catch (e) { if (!e || e.name !== 'AbortError') notify('No se pudo abrir el menú de compartir. Usa WhatsApp o Copiar.'); }
     });
@@ -1031,6 +1043,7 @@
       document.getElementById('pdfBtn').hidden = RECEPCION;
       document.getElementById('saveBtn').hidden = RECEPCION;
       document.getElementById('sendBtn').hidden = !RECEPCION;
+      document.getElementById('shareBtn').hidden = !navigator.share;
       document.getElementById('addCard').hidden = !RECEPCION;
       document.getElementById('emptyState').textContent = RECEPCION
         ? 'Escribe los amarres que hay que revisar y pulsa Enviar lista.'
