@@ -420,6 +420,26 @@
     }
     .send-buttons > * { flex: 1; text-align: center; }
     [hidden] { display: none !important; }
+    .actions { flex-wrap: wrap; }
+    .actions .status-message { flex-basis: 100%; }
+    .clear-bar {
+      flex-basis: 100%;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 8px 12px;
+      padding: 10px 12px;
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      background: var(--section-header);
+      font-weight: 600;
+      color: var(--text);
+    }
+    .clear-buttons { display: flex; gap: 8px; }
+    .clear-buttons button { flex: 0 0 auto !important; padding: 8px 14px; }
+    .btn-danger { background: #dc2626; color: #fff; }
+    .clear-buttons .btn-secondary { background: var(--card-bg); border: 1px solid var(--border); }
     .input-group { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
     .input-group .field-input { width: 100%; min-width: 0; }
     .berth-grid { grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr)); }
@@ -528,6 +548,13 @@
   </main>
 
   <div class="actions">
+    <div class="clear-bar" id="clearBar" hidden>
+      <span id="clearText">¿Orden enviada?</span>
+      <div class="clear-buttons">
+        <button class="btn-danger" id="clearYes" type="button">Vaciar</button>
+        <button class="btn-secondary" id="clearNo" type="button">Ahora no</button>
+      </div>
+    </div>
     <div class="status-message" id="statusMessage"></div>
     <button class="btn-secondary" id="pdfBtn" type="button">Crear PDF</button>
     <button class="btn-primary" id="saveBtn" type="button">Guardar Datos</button>
@@ -637,6 +664,57 @@
       clearTimeout(notify.t);
       notify.t = setTimeout(() => { el.textContent = ''; }, ms);
     }
+    // ---------- Vaciar la orden tras enviarla, con Deshacer ----------
+    let lastOrder = null, undoTimer = null, clearMode = '';
+    function askClear(text) {
+      if (!state.berths.length && !(state.note || '').trim()) return;
+      clearMode = 'ask';
+      document.getElementById('clearText').textContent = text;
+      document.getElementById('clearYes').textContent = 'Vaciar';
+      document.getElementById('clearYes').className = 'btn-danger';
+      document.getElementById('clearNo').hidden = false;
+      document.getElementById('clearBar').hidden = false;
+    }
+    function hideClearBar() {
+      clearTimeout(undoTimer);
+      clearMode = '';
+      document.getElementById('clearBar').hidden = true;
+    }
+    function clearOrder() {
+      lastOrder = { date: currentDate, state: JSON.parse(JSON.stringify(state)),
+                    sendNote: document.getElementById('sendNote').value };
+      state = { berths: [], readings: {}, note: '' };
+      document.getElementById('sendNote').value = '';
+      document.getElementById('importBanner').hidden = true;
+      autosave();
+      render();
+      clearMode = 'undo';
+      document.getElementById('clearText').textContent = 'Orden vaciada';
+      document.getElementById('clearYes').textContent = 'Deshacer';
+      document.getElementById('clearYes').className = 'btn-secondary';
+      document.getElementById('clearNo').hidden = true;
+      document.getElementById('clearBar').hidden = false;
+      clearTimeout(undoTimer);
+      undoTimer = setTimeout(() => { lastOrder = null; hideClearBar(); }, 10000);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    function undoClear() {
+      if (!lastOrder) { hideClearBar(); return; }
+      currentDate = lastOrder.date;
+      dateInput.value = currentDate;
+      state = lastOrder.state;
+      document.getElementById('sendNote').value = lastOrder.sendNote;
+      lastOrder = null;
+      autosave();
+      render();
+      hideClearBar();
+      notify('✓ Orden recuperada');
+    }
+    document.getElementById('clearYes').addEventListener('click', () => {
+      if (clearMode === 'undo') undoClear(); else clearOrder();
+    });
+    document.getElementById('clearNo').addEventListener('click', hideClearBar);
+
     function hint(msg, isError) {
       const el = document.getElementById('addHint');
       el.textContent = msg || '';
@@ -785,6 +863,7 @@
       autosave();
       if (!dateInput.value) { dateInput.value = currentDate; return; }
       currentDate = dateInput.value;
+      hideClearBar(); lastOrder = null;
       state = fetchState(currentDate);
       render();
       renderSuggestions();
@@ -895,6 +974,7 @@
         const r = await deliverPdf(blob, `Revision_Contadores_${currentDate}.pdf`);
         if (r.via === 'shared') notify('✓ PDF listo para compartir');
         else if (r.via !== 'declined') notify(`PDF guardado en el móvil. El menú de compartir ${r.why}.`, 9000);
+        if (r.via !== 'declined') askClear('¿PDF enviado? Vacía la app para la próxima orden');
       } catch (e) {
         notify('Error al crear el PDF');
         console.error(e);
@@ -943,6 +1023,7 @@
       location.href = `mailto:${encodeURIComponent(to).replace(/%40/g, '@')}` +
         `?subject=${encodeURIComponent(mailSubject())}&body=${encodeURIComponent(buildMessage())}`;
       notify('Si no se abre el correo, usa "Abrir en Gmail" o "Copiar mensaje"', 8000);
+      askClear('¿Orden enviada? Vacía la lista para una nueva');
     });
 
     document.getElementById('gmailBtn').addEventListener('click', () => {
@@ -952,6 +1033,7 @@
         `&su=${encodeURIComponent(mailSubject())}&body=${encodeURIComponent(buildMessage())}`;
       const w = window.open(url, '_blank');
       if (!w) location.href = url;
+      askClear('¿Orden enviada? Vacía la lista para una nueva');
     });
 
     document.getElementById('waBtn').addEventListener('click', () => {
@@ -959,6 +1041,7 @@
       const url = 'https://wa.me/?text=' + encodeURIComponent(buildMessage());
       const w = window.open(url, '_blank');
       if (!w) location.href = url;
+      askClear('¿Orden enviada? Vacía la lista para una nueva');
     });
 
     document.getElementById('sendBtn').addEventListener('click', () => {
@@ -977,11 +1060,12 @@
       try {
         navigator.clipboard.writeText(msg).then(() => notify('✓ Mensaje copiado'), fallback);
       } catch (e) { fallback(); }
+      askClear('¿Orden enviada? Vacía la lista para una nueva');
     });
 
     document.getElementById('shareBtn').addEventListener('click', async () => {
       if (needList()) return;
-      try { await navigator.share({ text: buildMessage() }); }
+      try { await navigator.share({ text: buildMessage() }); askClear('¿Orden enviada? Vacía la lista para una nueva'); }
       catch (e) { if (!e || e.name !== 'AbortError') notify('No se pudo abrir el menú de compartir. Usa WhatsApp o Copiar.'); }
     });
 
