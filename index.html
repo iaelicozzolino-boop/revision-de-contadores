@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Cache-Control" content="no-cache">
 <title>Revisión de Contadores</title>
 <style>
     :root {
@@ -438,6 +439,7 @@
     }
     .clear-buttons { display: flex; gap: 8px; }
     .clear-buttons button { flex: 0 0 auto !important; padding: 8px 14px; }
+    .app-version { flex-basis: 100%; text-align: center; font-size: 10px; color: var(--text-dim); order: 99; }
     .btn-danger { background: #dc2626; color: #fff; }
     .clear-buttons .btn-secondary { background: var(--card-bg); border: 1px solid var(--border); }
     .input-group { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
@@ -556,6 +558,7 @@
       </div>
     </div>
     <div class="status-message" id="statusMessage"></div>
+    <div class="app-version">v1.4 · 19/10</div>
     <button class="btn-secondary" id="pdfBtn" type="button">Crear PDF</button>
     <button class="btn-primary" id="saveBtn" type="button">Guardar Datos</button>
     <button class="btn-primary" id="sendBtn" type="button" hidden>Enviar lista</button>
@@ -974,7 +977,7 @@
         const r = await deliverPdf(blob, `Revision_Contadores_${currentDate}.pdf`);
         if (r.via === 'shared') notify('✓ PDF listo para compartir');
         else if (r.via !== 'declined') notify(`PDF guardado en el móvil. El menú de compartir ${r.why}.`, 9000);
-        if (r.via !== 'declined') askClear('¿PDF enviado? Vacía la app para la próxima orden');
+        askClear('¿PDF enviado? Vacía la app para la próxima orden');
       } catch (e) {
         notify('Error al crear el PDF');
         console.error(e);
@@ -1004,6 +1007,14 @@
         ? buildMessage()
         : 'Añade al menos un amarre para preparar el mensaje.';
     }
+    function openExternal(url) {
+      let w = null;
+      try { w = window.open(url, '_blank', 'noopener'); } catch (e) {}
+      // Con 'noopener' algunos navegadores devuelven null aunque abran la pestaña; no salimos de la app
+      if (!w && !document.hidden) setTimeout(() => {
+        if (!document.hidden) notify('Si no se abrió la pestaña, permite las ventanas emergentes para esta página', 8000);
+      }, 1200);
+    }
     function needList() {
       if (state.berths.length) return false;
       notify('Añade al menos un amarre antes de enviar');
@@ -1031,16 +1042,14 @@
       const url = 'https://mail.google.com/mail/?view=cm&fs=1' +
         `&to=${encodeURIComponent(mailInput.value.trim())}` +
         `&su=${encodeURIComponent(mailSubject())}&body=${encodeURIComponent(buildMessage())}`;
-      const w = window.open(url, '_blank');
-      if (!w) location.href = url;
+      openExternal(url);
       askClear('¿Orden enviada? Vacía la lista para una nueva');
     });
 
     document.getElementById('waBtn').addEventListener('click', () => {
       if (needList()) return;
       const url = 'https://wa.me/?text=' + encodeURIComponent(buildMessage());
-      const w = window.open(url, '_blank');
-      if (!w) location.href = url;
+      openExternal(url);
       askClear('¿Orden enviada? Vacía la lista para una nueva');
     });
 
