@@ -838,7 +838,7 @@
       </div>
     </div>
     <div class="status-message" id="statusMessage"></div>
-    <div class="app-version">v1.5 · 20/10</div>
+    <div class="app-version">v1.6 · 20/10</div>
     <button class="btn-secondary" id="pdfBtn" type="button">Crear PDF</button>
     <button class="btn-primary" id="saveBtn" type="button">Guardar datos</button>
     <button class="btn-primary" id="sendBtn" type="button" hidden>Enviar lista</button>
@@ -853,18 +853,18 @@
 
     const PIERS = {
       A: range('A', 1, 34).reverse(),
-      B: [...range('B', 1, 32), 'B34', 'B36'],
-      C: [...range('C', 1, 34), 'C36', 'C37', 'C39'],
+      B: range('B', 1, 36),
+      C: range('C', 1, 39),
       D: range('D', 1, 16),
       E: range('E', 1, 17),
       F: insertAfter(range('F', 1, 55), 'F07', 'F07 B'),
       G: range('G', 1, 16).reverse(),
-      H: insertAfter(insertAfter([...range('H', 1, 30), 'H32', 'H34', 'H36', 'H38'], 'H29', 'H29 B'), 'H38', 'H38 B'),
+      H: insertAfter(insertAfter(range('H', 1, 38), 'H29', 'H29 B'), 'H38', 'H38 B'),
       I: insertAfter(insertAfter(range('I', 1, 38), 'I37', 'I37 B'), 'I38', 'I38 B'),
       J: range('J', 1, 14),
-      K: range('K', 1, 56),
-      L: ['L01','L03','L05','L07','L09','L11','L13','L15','L17','L19','L21','L23','L25','L27','L28','L26','L24','L22','L20','L18','L16','L14','L12','L10','L08','L06'],
-      M: range('M', 5, 9)
+      K: [...range('K', 1, 56), 'K56 B'],
+      L: range('L', 1, 28),
+      M: range('M', 1, 9)
     };
     const MASTER = Object.values(PIERS).flat();
     const ORDER = new Map(MASTER.map((b, i) => [b, i]));
