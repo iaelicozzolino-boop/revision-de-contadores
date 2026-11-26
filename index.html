@@ -911,11 +911,8 @@
     let state = { berths: [], readings: {} };
     let RECEPCION = false;
 
-    // Enlace base para los mensajes de recepción
-    const ARTIFACT_URL = 'https://claude.ai/artifact/GcM96P2FkxPj9cVRAcViDb';
-    // En GitHub Pages la lista viaja como ?lista=...; dentro de Claude solo funciona #r-...
-    const ON_WEB = /^https?:$/.test(location.protocol) && !/claude/.test(location.hostname);
-    const BASE_URL = ON_WEB ? location.origin + location.pathname : ARTIFACT_URL;
+    // Enlace base para los mensajes de recepción: esta misma página
+    const BASE_URL = location.href.split(/[?#]/)[0];
 
     const key = d => `${RECEPCION ? 'recepcion' : 'revision'}_${d}`;
     function store(d, s) { try { localStorage.setItem(key(d), JSON.stringify(s)); return true; } catch (e) { return false; } }
@@ -1270,7 +1267,6 @@
     // ---------- Recepción: preparar y enviar la lista ----------
     function listLink() {
       const code = currentDate.replace(/-/g, '') + '-' + state.berths.map(compact).join('-');
-      if (!ON_WEB) return `${BASE_URL}#r-${code}`;
       const note = document.getElementById('sendNote').value.trim();
       return `${BASE_URL}?lista=${code}` + (note ? `&nota=${encodeURIComponent(note)}` : '');
     }
